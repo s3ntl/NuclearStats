@@ -82,6 +82,7 @@ namespace NS
             harmony.PatchAll(typeof(HandleTargetDetect));
             harmony.PatchAll(typeof(CargoDeploymentSystemHandler));
 
+            harmony.PatchAll(typeof(DonationHandler));
 
             resultReader.Awake();
             readKillMessage.Awake();

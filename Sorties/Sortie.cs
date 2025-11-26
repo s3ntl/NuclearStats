@@ -6,7 +6,8 @@ using System.Security.Policy;
 using System.Text;
 using System.Threading.Tasks;
 using BepInEx.Logging;
-
+using NS.Utils;
+using NS.Utils.Signals;
 using NuclearOption.Networking;
 using UnityEngine;
 
@@ -42,7 +43,9 @@ namespace NS.Sorties
         private GlobalPosition multipassStartingPoint;
         private bool isInMultipass = false;
         private float greatestDistanceInMultipass;
+        private RaycastHit RaycastHit;
 
+        private int parachutersKilled = 0;
         public Sortie(Aircraft aircraft, int sortieSerialNumber) 
         {
             this.aircraft = aircraft;
@@ -87,40 +90,20 @@ namespace NS.Sorties
  
         }
 
+
         public void AddKill(PersistentUnit unit)
         {
             if (aircraft.NetworkHQ == unit.unit.NetworkHQ) { return; }
             killedUnits.Add(CopyUnitInfo(unit.unit));
         }
 
-        private void AddParachutedKill(PersistentUnit unit)
-        {
-
-        }
-
+       
         public void FixedUpdate()
         {
-            AnalyzeMultipass();
+           if (!isSortieEnded) AnalyzeMultipass();
         }
 
-        private void AnalyzeMultipass()
-        {
-            if(aircraft.transform.position.y <= 5f)
-            {
-                if (!isInMultipass)
-                {
-                    multipassStartingPoint = aircraft.transform.position.ToGlobalPosition();
-                    isInMultipass = true;
-                }
-            }
-            else
-            {
-                if (isInMultipass)
-                {
-
-                }
-            }
-        }
+      
 
         public void DetectKilled(PersistentID killerPersistentID)
         {
@@ -166,11 +149,13 @@ namespace NS.Sorties
 
                 //LogWriter.WriteLog(string.Format("Sortie N{3}: aircraftInfo [{0}], kills {1}, liveTime {2}, endReason {4}, nukesExploded {5}", selfInfo.ToString(),
                 //    killedUnits.Count(), elapsed, sortieSerialNumber, sortieEndReason.ToString(), explodedNukes));
-
+                FindParachuters();
 
                 Plugin.logger.LogInfo($"Sortie N{sortieSerialNumber}: aircraftInfo[{selfInfo.ToString()}], kills {killedUnits.Count()}, " +
                     $"liveTime {elapsed}, endReason {sortieEndReason.ToString()}, nukesExploded {explodedNukes}, " +
-                    $"jammingAmount {TimeSpan.FromSeconds(jammingAmount)}, DetectedTargets {detectedTargets}");
+                    $"jammingAmount {TimeSpan.FromSeconds(jammingAmount)}, DetectedTargets {detectedTargets}, " +
+                    $"killedParachuters {parachutersKilled}, " +
+                    $"greatestDistanceInMultipass {greatestDistanceInMultipass}");
 
                 LogWriter.WriteLog($"Sortie N{sortieSerialNumber}: aircraftInfo[{selfInfo.ToString()}], kills {killedUnits.Count()}, " +
                     $"liveTime {elapsed}, endReason {sortieEndReason.ToString()}, nukesExploded {explodedNukes}, " +
@@ -216,6 +201,54 @@ namespace NS.Sorties
                 Plugin.logger.LogInfo(string.Format("Sortie N{0}: unit killed: [Victim: {1} | killerName: {2}  | KillerSteamID {3}]", sortieSerialNumber, unitInfo.ToString(), this.selfInfo.PlayerName, this.selfInfo.SteamID));
                 LogWriter.WriteLog(string.Format("Sortie N{0}: unit killed: [Victim: {1} | KillerInfo ({2})]", sortieSerialNumber, unitInfo.ToString(), this.selfInfo));
             }
+        }
+
+        private void FindParachuters()
+        {
+            foreach(var info in killedUnits)
+            {
+                EventBus.Instance.Invoke<ParachutingUnitKilledSignal>(new ParachutingUnitKilledSignal(info.persistentID, selfInfo.persistentID));
+
+            }
+        }
+
+        public void AddParachuterKill()
+        {
+            parachutersKilled++;
+        }
+
+        private void AnalyzeMultipass()
+        {
+            if (GetRadarAlt() <= 5f)
+            {
+                if (!isInMultipass)
+                {
+                    multipassStartingPoint = aircraft.transform.position.ToGlobalPosition();
+                    
+                }
+                isInMultipass = true;
+                
+            }
+            else
+            {
+                if (isInMultipass)
+                {
+                    float distance = Vector3.Distance(multipassStartingPoint.ToLocalPosition(), aircraft.transform.position);
+                    if (distance > greatestDistanceInMultipass)
+                    {
+                        greatestDistanceInMultipass = distance;
+                        Plugin.DebugLog($"Setting multipass greatest distance to {distance}");
+                    }
+                }
+                isInMultipass = false;
+                
+            }
+        }
+
+        private float GetRadarAlt()
+        {
+            //Plugin.DebugLog($"Alt {aircraft.radarAlt}");
+            return aircraft.radarAlt;
         }
     }
 }

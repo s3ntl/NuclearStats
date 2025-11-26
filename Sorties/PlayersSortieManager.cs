@@ -5,13 +5,17 @@ using System.Text;
 using System.Threading.Tasks;
 using BepInEx.Logging;
 using NS.Handlers;
+using NS.Utils;
+using NS.Utils.Signals;
 using UnityEngine;
+using UnityEngine.UIElements;
 
 namespace NS.Sorties
 {
     public class PlayersSortieManager
     {
         private Dictionary<PersistentID, Sortie> playerAircraftsInfo = new Dictionary<PersistentID, Sortie>();
+        private List<PersistentID> killedParachuters = new List<PersistentID>();
 
         public void Awake()
         {
@@ -22,11 +26,15 @@ namespace NS.Sorties
             HandleWarheadDetonation.onWarheadDetonated += AddNuke;
             HandleTargetDetect.onTargetDetected += AddDetects;
             HandleJamming.OnFire += AddJammingAmmount;
+            EventBus.Instance.Subscribe<ParachutingUnitKilledSignal>(ParachutingUnitKilled);
         }
 
         public void FixedUpdate()
         {
-
+            foreach (var player in playerAircraftsInfo.Values)
+            {
+                player.FixedUpdate();
+            }
         }
         public void Reset()
         {
@@ -110,5 +118,25 @@ namespace NS.Sorties
                 wn.ShowSortie();
             }
         }
+
+        private void ParachutingUnitKilled(ParachutingUnitKilledSignal signal)
+        {
+            if (signal.killer == default) killedParachuters.Add(signal.unit);
+            else FindParachuteKiller(signal.unit, signal.killer);
+        }
+
+        public void FindParachuteKiller(PersistentID parachuter, PersistentID killer)
+        {
+            if (killedParachuters.Contains(parachuter))
+            {
+                killedParachuters.Remove(parachuter);
+                if (playerAircraftsInfo.ContainsKey(killer))
+                {
+                    playerAircraftsInfo[killer].AddParachuterKill();
+                }
+            }
+        }
+
+        
     }
 }
